@@ -17,16 +17,45 @@ function render_admin_page() {
   <h1>Attributes Performance Test</h1>
   <form method="post">
 	<?php wp_nonce_field( 'generate', 'attributesgenerator_nonce' ); ?>
-	<label for="number_of_products">Number of products to generate</label>
+	<label for="number_of_products">Number to generate</label>
 	<input type="number" name="number_of_products" />
 	<label for="start_index">Start index</label>
 	<input type="number" name="start_index" />
-
-	<?php submit_button( 'Generate global attributes and products', 'primary', 'generate_global_attributes' ); ?>
+	<?php submit_button( 'Generate only global attributes', 'primary', 'generate_global_attributes' ); ?>
+	<?php submit_button( 'Generate global attributes and products', 'primary', 'generate_global_attributes_and_products' ); ?>
 	<?php submit_button( 'Generate products with local attributes', 'primary', 'generate_products_with_local_attributes' ); ?>
 	<?php submit_button( 'Delete all global attributes', 'primary', 'delete_all_global_attributes' ); ?>
 	</form>
 	<?php
+}
+
+function generate_global_attributes( $number_of_products, $start_index ) {
+	for ( $i = $start_index; $i < $start_index + $number_of_products; $i++ ) {
+		$attribute_name = "Generated attribute $i";
+		$id             = wc_create_attribute( array( 'name' => $attribute_name ) );
+		$slug           = wc_sanitize_taxonomy_name( $attribute_name );
+		$taxonomy_name  = wc_attribute_taxonomy_name( $slug );
+
+		register_taxonomy(
+			$taxonomy_name,
+			apply_filters( 'woocommerce_taxonomy_objects_' . $taxonomy_name, array( 'product' ) ),
+			apply_filters(
+				'woocommerce_taxonomy_args_' . $taxonomy_name,
+				array(
+					'labels'       => array(
+						'name' => $attribute_name,
+					),
+					'hierarchical' => true,
+					'show_ui'      => false,
+					'query_var'    => true,
+					'rewrite'      => false,
+				)
+			)
+		);
+		for ( $j = 0; $j < NUMBER_OF_TERMS_PER_ATTR; $j++ ) {
+			wp_insert_term( "$attribute_name term $j", $taxonomy_name );
+		}
+	}
 }
 
 function generate_global_attributes_and_products( $number_of_products, $start_index ) {
@@ -70,7 +99,6 @@ function generate_global_attributes_and_products( $number_of_products, $start_in
 			array( $attribute )
 		);
 		$product->save();
-
 	}
 }
 
@@ -104,12 +132,14 @@ function delete_all_attributes() {
 }
 
 function process_page_submit() {
-	if ( ! empty( $_POST['generate_global_attributes'] ) ) {
+	if ( ! empty( $_POST['generate_global_attributes_and_products'] ) ) {
 		generate_global_attributes_and_products( intval( $_POST['number_of_products'] ), intval( $_POST['start_index'] ) );
 	} elseif ( ! empty( $_POST['generate_products_with_local_attributes'] ) ) {
 		generate_products_with_local_attributes( intval( $_POST['number_of_products'] ), intval( $_POST['start_index'] ) );
 	} elseif ( ! empty( $_POST['delete_all_global_attributes'] ) ) {
 		as_enqueue_async_action( 'attributes_generator_delete_all_attributes' );
+	} elseif ( ! empty( $_POST['generate_global_attributes'] ) ) {
+		generate_global_attributes( intval( $_POST['number_of_products'] ), intval( $_POST['start_index'] ) );
 	}
 
 }
