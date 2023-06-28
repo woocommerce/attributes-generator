@@ -12,19 +12,21 @@ function register_admin_menu() {
 	add_action( "load-$hook", 'process_page_submit' );
 }
 
-function render_admin_page() {
-	?>
-  <h1>Attributes Performance Test</h1>
-  <form method="post">
+function render_admin_page() {  ?>
+	<h1>Attributes Performance Test</h1>
+	<form method="post">
 	<?php wp_nonce_field( 'generate', 'attributesgenerator_nonce' ); ?>
-	<label for="number_of_products">Number to generate</label>
-	<input type="number" name="number_of_products" />
-	<label for="start_index">Start index</label>
-	<input type="number" name="start_index" />
-	<?php submit_button( 'Generate only global attributes', 'primary', 'generate_global_attributes' ); ?>
-	<?php submit_button( 'Generate global attributes and products', 'primary', 'generate_global_attributes_and_products' ); ?>
-	<?php submit_button( 'Generate products with local attributes', 'primary', 'generate_products_with_local_attributes' ); ?>
-	<?php submit_button( 'Delete all global attributes', 'primary', 'delete_all_global_attributes' ); ?>
+		<label for="number_of_products">Number to generate</label>
+		<input type="number" name="number_of_products" />
+		<label for="start_index">Start index</label>
+		<input type="number" name="start_index" />
+		<?php submit_button( 'Generate only global attributes', 'primary', 'generate_global_attributes' ); ?>
+		<?php submit_button( 'Generate global attributes and products', 'primary', 'generate_global_attributes_and_products' ); ?>
+		<?php submit_button( 'Generate products with local attributes', 'primary', 'generate_products_with_local_attributes' ); ?>
+		<?php submit_button( 'Delete all global attributes', 'primary', 'delete_all_global_attributes' ); ?>
+		<label for="product_id">Product ID</label>
+		<input type="number" name="product_id" />
+		<?php submit_button( 'Attach global attributes to product', 'primary', 'attach_to_product' ); ?>
 	</form>
 	<?php
 }
@@ -32,9 +34,9 @@ function render_admin_page() {
 function generate_global_attributes( $number_of_products, $start_index ) {
 	for ( $i = $start_index; $i < $start_index + $number_of_products; $i++ ) {
 		$attribute_name = "Generated attribute $i";
-		$id             = wc_create_attribute( array( 'name' => $attribute_name ) );
-		$slug           = wc_sanitize_taxonomy_name( $attribute_name );
-		$taxonomy_name  = wc_attribute_taxonomy_name( $slug );
+		wc_create_attribute( array( 'name' => $attribute_name ) );
+		$slug          = wc_sanitize_taxonomy_name( $attribute_name );
+		$taxonomy_name = wc_attribute_taxonomy_name( $slug );
 
 		register_taxonomy(
 			$taxonomy_name,
@@ -131,6 +133,45 @@ function delete_all_attributes() {
 	}
 }
 
+function attach_to_product( $number, $start_index, $product_id ) {
+	global $wpdb;
+
+	$product = wc_get_product( $product_id );
+
+	$attributes = array();
+
+	for ( $i = $start_index; $i < $start_index + $number; $i++ ) {
+		$name          = "Generated attribute $i";
+		$results       = $wpdb->get_results( "SELECT attribute_id FROM wp_woocommerce_attribute_taxonomies WHERE attribute_label = '$name'" );
+		$slug          = wc_sanitize_taxonomy_name( $name );
+		$taxonomy_name = wc_attribute_taxonomy_name( $slug );
+
+		$attribute_data = wc_get_attribute( $results[0]->attribute_id );
+		$attribute_obj  = new \WC_Product_Attribute();
+		$attribute_obj->set_name( $taxonomy_name );
+		$attribute_obj->set_id( $attribute_data->id );
+
+		$terms = get_terms( $taxonomy_name, 'orderby=name&hide_empty=0' );
+
+		$attribute_obj->set_options(
+			array_map(
+				function( $term ) {
+					return $term->term_id;
+				},
+				$terms
+			)
+		);
+		$attribute_obj->set_position( 1 );
+		$attribute_obj->set_visible( true );
+		$attribute_obj->set_variation( false );
+
+		$attributes[] = $attribute_obj;
+	}
+
+	$product->set_attributes( $attributes );
+	$product->save();
+}
+
 function process_page_submit() {
 	if ( ! empty( $_POST['generate_global_attributes_and_products'] ) ) {
 		generate_global_attributes_and_products( intval( $_POST['number_of_products'] ), intval( $_POST['start_index'] ) );
@@ -140,6 +181,8 @@ function process_page_submit() {
 		as_enqueue_async_action( 'attributes_generator_delete_all_attributes' );
 	} elseif ( ! empty( $_POST['generate_global_attributes'] ) ) {
 		generate_global_attributes( intval( $_POST['number_of_products'] ), intval( $_POST['start_index'] ) );
+	} elseif ( ! empty( $_POST['attach_to_product'] ) ) {
+		attach_to_product( intval( $_POST['number_of_products'] ), intval( $_POST['start_index'] ), intval( $_POST['product_id'] ) );
 	}
 
 }
